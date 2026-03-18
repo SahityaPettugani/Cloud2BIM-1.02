@@ -10,6 +10,81 @@ import math
 
 
 class IFCmodel:
+    def create_ceiling(self, ceiling_name, points, z_elev, height, material_name):
+        # Convert points to IfcCartesianPoint instances
+        polygon_points = [
+            self.ifc_file.create_entity("IfcCartesianPoint", Coordinates=point)
+            for point in points
+        ]
+        axis_placement = self.ifc_file.create_entity(
+            "IfcAxis2Placement3D",
+            Location=self.ifc_file.create_entity("IfcCartesianPoint", Coordinates=(0.0, 0.0, float(z_elev))),
+            Axis=self.ifc_file.create_entity("IfcDirection", DirectionRatios=(0.0, 0.0, 1.0)),
+            RefDirection=self.ifc_file.create_entity("IfcDirection", DirectionRatios=(1.0, 0.0, 0.0))
+        )
+        ceiling_placement = self.ifc_file.create_entity(
+            "IfcLocalPlacement",
+            RelativePlacement=axis_placement
+        )
+        polyline_profile = self.ifc_file.create_entity(
+            "IfcArbitraryClosedProfileDef",
+            ProfileType="AREA",
+            ProfileName="Ceiling perimeter",
+            OuterCurve=self.ifc_file.create_entity("IfcPolyline", Points=polygon_points + [polygon_points[0]])
+        )
+        extrusion_direction = self.ifc_file.create_entity("IfcDirection", DirectionRatios=(0.0, 0.0, 1.0))
+        ceiling_solid = self.ifc_file.create_entity(
+            "IfcExtrudedAreaSolid",
+            SweptArea=polyline_profile,
+            Position=axis_placement,
+            ExtrudedDirection=extrusion_direction,
+            Depth=height
+        )
+        shape_representation = self.ifc_file.create_entity(
+            "IfcShapeRepresentation",
+            ContextOfItems=self.geom_rep_sub_context,
+            RepresentationIdentifier="Body",
+            RepresentationType="SweptSolid",
+            Items=[ceiling_solid]
+        )
+        product_definition_shape = self.ifc_file.create_entity(
+            "IfcProductDefinitionShape",
+            Representations=[shape_representation]
+        )
+        ifc_ceiling = self.ifc_file.create_entity(
+            "IfcCovering",
+            GlobalId=ifcopenshell.guid.new(),
+            OwnerHistory=self.owner_history,
+            Name=ceiling_name,
+            ObjectType="Ceiling",
+            ObjectPlacement=ceiling_placement,
+            Representation=product_definition_shape,
+            PredefinedType="CEILING"
+        )
+        # Create material
+        material = self.ifc_file.create_entity(
+            "IfcMaterial",
+            Name=material_name
+        )
+        # Associate material to the ceiling
+        self.ifc_file.create_entity(
+            "IfcRelAssociatesMaterial",
+            GlobalId=ifcopenshell.guid.new(),
+            OwnerHistory=self.owner_history,
+            RelatedObjects=[ifc_ceiling],
+            RelatingMaterial=material
+        )
+        return ifc_ceiling
+
+    def create_door(self, door_name, geometry):
+        # Minimal stub for IFCDOOR creation
+        # You may want to expand this with proper geometry and placement
+        ifc_door = self.ifc_file.create_entity(
+            "IfcDoor",
+            GlobalId=ifcopenshell.guid.new(),
+            Name=door_name
+        )
+        return ifc_door
 
     def __init__(self, project_name, output_file):
         self.project_name = project_name
