@@ -257,7 +257,7 @@ def main():
         if not el_type:
             raise ValueError(f"Element at index {idx} missing 'type' key: {element}")
         # Defensive: check geometry for types that require it
-        if el_type in ('wall', 'floor', 'ceiling', 'door'):
+        if el_type in ('wall', 'floor', 'ceiling', 'door', 'beam', 'column', 'window'):
             geometry = element.get('geometry')
             if not isinstance(geometry, dict):
                 raise ValueError(f"Element at index {idx} missing or invalid geometry: {element}")
@@ -347,6 +347,34 @@ def main():
             if hasattr(ifc_model, 'create_door'):
                 ifc_model.create_door(element['id'], geometry)
         # Add more element types here as needed
+        # Inside the "Unified element processing loop" in main()
+        elif el_type == 'beam':
+            geometry = element.get('geometry', {})
+            points = [
+                [float(geometry['start_x']), float(geometry['start_y'])],
+                [float(geometry['end_x']), float(geometry['end_y'])]
+            ]
+            z_pos = float(geometry.get('start_z', 0.0))
+            height = float(element.get('height', 0.2))
+            if hasattr(ifc_model, 'create_beam'):
+                ifc_beam = ifc_model.create_beam(element['id'], points, z_pos, height)
+                ifc_model.assign_product_to_storey(ifc_beam, storeys_ifc[storey_number - 1])
+
+        elif el_type == 'column':
+            geometry = element.get('geometry', {})
+            center_pt = [float(geometry['start_x']), float(geometry['start_y'])]
+            z_pos = float(geometry.get('start_z', 0.0))
+            height = float(element.get('height', 3.0))
+            if hasattr(ifc_model, 'create_column'):
+                ifc_col = ifc_model.create_column(element['id'], center_pt, z_pos, height)
+                ifc_model.assign_product_to_storey(ifc_col, storeys_ifc[storey_number - 1])
+
+        elif el_type == 'window':
+        # Windows are typically openings in walls; ensure your IFCmodel 
+        # has a method to create them as independent products or voids
+            geometry = element.get('geometry', {})
+            if hasattr(ifc_model, 'create_window'):
+                ifc_model.create_window(element['id'], geometry)
 
     ifc_model.write()
     print(f"IFC model saved to {output_ifc}")

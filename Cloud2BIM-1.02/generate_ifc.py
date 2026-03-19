@@ -76,15 +76,97 @@ class IFCmodel:
         )
         return ifc_ceiling
 
-    def create_door(self, door_name, geometry):
-        # Minimal stub for IFCDOOR creation
-        # You may want to expand this with proper geometry and placement
-        ifc_door = self.ifc_file.create_entity(
-            "IfcDoor",
-            GlobalId=ifcopenshell.guid.new(),
-            Name=door_name
-        )
-        return ifc_door
+    def create_column(self, name, center_pt, z_elev, height, radius=0.2):
+        """Creates an IfcColumn as a cylindrical extrusion."""
+        # 1. Define placement
+        point = self.ifc_file.create_entity("IfcCartesianPoint", Coordinates=(float(center_pt[0]), float(center_pt[1]), float(z_elev)))
+        location = self.ifc_file.create_entity("IfcAxis2Placement3D", Location=point)
+        placement = self.ifc_file.create_entity("IfcLocalPlacement", RelativePlacement=location)
+
+        # 2. Define geometry (Circle profile extruded vertically)
+        circle = self.ifc_file.create_entity("IfcCircle", Position=self.ifc_file.create_entity("IfcAxis2Placement2D", 
+                                             Location=self.ifc_file.create_entity("IfcCartesianPoint", Coordinates=(0.0, 0.0))), 
+                                             Radius=float(radius))
+        profile = self.ifc_file.create_entity("IfcArbitraryClosedProfileDef", ProfileType="AREA", ProfileName=f"{name}_profile", OuterCurve=circle)
+        
+        dir_z = self.ifc_file.create_entity("IfcDirection", DirectionRatios=(0.0, 0.0, 1.0))
+        extrusion = self.ifc_file.create_entity("IfcExtrudedAreaSolid", SweptArea=profile, 
+                                                ExtrudedDirection=dir_z, Depth=float(height))
+
+        representation = self.ifc_file.create_entity("IfcShapeRepresentation", ContextOfItems=self.context, 
+                                                     RepresentationIdentifier="Body", RepresentationType="SweptSolid", Items=[extrusion])
+        product_shape = self.ifc_file.create_entity("IfcProductDefinitionShape", Representations=[representation])
+
+        # 3. Create Entity
+        column = self.ifc_file.create_entity("IfcColumn", GlobalId=ifcopenshell.guid.new(), OwnerHistory=self.owner_history, 
+                                             Name=name, ObjectPlacement=placement, Representation=product_shape)
+        return column
+
+    def create_beam(self, name, points, z_elev, height, thickness=0.2):
+        """Creates an IfcBeam by extruding a profile along the path between two points."""
+        start_pt = points[0]
+        end_pt = points[1]
+        
+        # Calculate length and rotation
+        dx, dy = end_pt[0] - start_pt[0], end_pt[1] - start_pt[1]
+        length = math.sqrt(dx**2 + dy**2)
+        angle = math.atan2(dy, dx)
+
+        # Placement
+        point = self.ifc_file.create_entity("IfcCartesianPoint", Coordinates=(float(start_pt[0]), float(start_pt[1]), float(z_elev)))
+        axis = self.ifc_file.create_entity("IfcDirection", DirectionRatios=(0.0, 0.0, 1.0))
+        ref_dir = self.ifc_file.create_entity("IfcDirection", DirectionRatios=(math.cos(angle), math.sin(angle), 0.0))
+        location = self.ifc_file.create_entity("IfcAxis2Placement3D", Location=point, Axis=axis, RefDirection=ref_dir)
+        placement = self.ifc_file.create_entity("IfcLocalPlacement", RelativePlacement=location)
+
+        # Rectangular profile (Thickness x Height) extruded along the length
+        rect = self.ifc_file.create_entity("IfcRectangleProfileDef", ProfileType="AREA", XDim=float(length), YDim=float(thickness))
+        
+        # Move profile so it starts at the point
+        rect_pos = self.ifc_file.create_entity("IfcAxis2Placement2D", 
+                                               Location=self.ifc_file.create_entity("IfcCartesianPoint", Coordinates=(length/2, 0.0)))
+        rect.Position = rect_pos
+
+        dir_z = self.ifc_file.create_entity("IfcDirection", DirectionRatios=(0.0, 0.0, 1.0))
+        extrusion = self.ifc_file.create_entity("IfcExtrudedAreaSolid", SweptArea=rect, ExtrudedDirection=dir_z, Depth=float(height))
+
+        representation = self.ifc_file.create_entity("IfcShapeRepresentation", ContextOfItems=self.context, 
+                                                     RepresentationIdentifier="Body", RepresentationType="SweptSolid", Items=[extrusion])
+        product_shape = self.ifc_file.create_entity("IfcProductDefinitionShape", Representations=[representation])
+
+        beam = self.ifc_file.create_entity("IfcBeam", GlobalId=ifcopenshell.guid.new(), OwnerHistory=self.owner_history, 
+                                           Name=name, ObjectPlacement=placement, Representation=product_shape)
+        return beam
+
+    def create_door(self, name, geometry):
+        """Creates an IfcDoor based on bounding box geometry."""
+        z_pos = float(geometry.get('start_z', 0.0))
+        height = float(geometry.get('height', 2.1))
+        width = math.sqrt((geometry['end_x'] - geometry['start_x'])**2 + (geometry['end_y'] - geometry['start_y'])**2)
+        
+        # Simplified box representation for the door panel
+        point = self.ifc_file.create_entity("IfcCartesianPoint", Coordinates=(float(geometry['start_x']), float(geometry['start_y']), z_pos))
+        location = self.ifc_file.create_entity("IfcAxis2Placement3D", Location=point)
+        placement = self.ifc_file.create_entity("IfcLocalPlacement", RelativePlacement=location)
+
+        # Create door entity (Geometry can be expanded to include panel details)
+        door = self.ifc_file.create_entity("IfcDoor", GlobalId=ifcopenshell.guid.new(), OwnerHistory=self.owner_history, 
+                                           Name=name, OverallHeight=height, OverallWidth=width, ObjectPlacement=placement)
+        return door
+
+    def create_window(self, name, geometry):
+        """Creates an IfcWindow based on bounding box geometry."""
+        z_pos = float(geometry.get('start_z', 0.0))
+        height = float(geometry.get('height', 1.2))
+        width = math.sqrt((geometry['end_x'] - geometry['start_x'])**2 + (geometry['end_y'] - geometry['start_y'])**2)
+
+        point = self.ifc_file.create_entity("IfcCartesianPoint", Coordinates=(float(geometry['start_x']), float(geometry['start_y']), z_pos))
+        location = self.ifc_file.create_entity("IfcAxis2Placement3D", Location=point)
+        placement = self.ifc_file.create_entity("IfcLocalPlacement", RelativePlacement=location)
+
+        window = self.ifc_file.create_entity("IfcWindow", GlobalId=ifcopenshell.guid.new(), OwnerHistory=self.owner_history, 
+                                             Name=name, OverallHeight=height, OverallWidth=width, ObjectPlacement=placement)
+        return window
 
     def __init__(self, project_name, output_file):
         self.project_name = project_name
